@@ -350,5 +350,359 @@ INSERT INTO `mydb`.`Access` (`id`, `access_type`, `User_id`, `Data_id`) VALUES (
 
 COMMIT;
 ```
-
+___
 ## RESTful сервіс для управління даними
+
+## Налаштування App (app.js)
+```js
+import express from 'express';
+import dataRouter from './routes/dataRoute.js';
+import commentRouter from './routes/commentRoute.js';
+
+const app = express();
+
+app.use(express.json());
+
+app.use('/api', dataRouter);
+app.use('/api', commentRouter);
+
+export default app;
+```
+___
+## Сервер (server.js)
+```js
+import app from './app.js';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const port = process.env.PORT || 3000;
+
+app.listen(port, () => {
+  console.log(`Server started on port ${port}`);
+});
+```
+___
+## Маршрути
+### commentRoute.js
+```js
+import express from 'express';
+import {
+  getAllComments,
+  getComment,
+  createComment,
+  deleteComment,
+} from '../controllers/commentController.js';
+
+const commentRouter = express.Router();
+
+commentRouter.get('/comment', getAllComments);
+commentRouter.get('/comment/:id', getComment);
+commentRouter.post('/comment', createComment);
+commentRouter.delete('/comment/:id', deleteComment);
+
+export default commentRouter;
+```
+### dataRoute.js
+```js
+import express from 'express';
+import {
+  getAllData,
+  getData,
+  createData,
+  updateData,
+  deleteData,
+} from '../controllers/dataController.js';
+
+const dataRouter = express.Router();
+
+dataRouter.get('/data', getAllData);
+dataRouter.get('/data/:id', getData);
+dataRouter.post('/data', createData);
+dataRouter.patch('/data/:id', updateData);
+dataRouter.delete('/data/:id', deleteData);
+
+export default dataRouter;
+```
+___
+## Контролери
+### commentController.js
+```js
+import handleError from '../utils/handleError.js';
+import {
+  deleteCommentById,
+  insertComment,
+  selectCommentById,
+  selectComments,
+} from '../models/commentModel.js';
+
+export const getAllComments = async (req, res) => {
+  try {
+    const comments = await selectComments();
+    return res.status(200).json(comments);
+  } catch (error) {
+    handleError(res, error);
+  }
+};
+
+export const getComment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const comment = await selectCommentById(id);
+
+    if (!comment) {
+      return res.status(404).json({ message: 'Comment not found' });
+    }
+
+    return res.status(200).json(comment);
+  } catch (error) {
+    handleError(res, error);
+  }
+};
+
+export const createComment = async (req, res) => {
+  try {
+    const { content, User_id, Data_id } = req.body;
+
+    if (!content || !User_id || !Data_id) {
+      return res.status(400).json({ message: 'Required data missing' });
+    }
+
+    const commentId = await insertComment(content, User_id, Data_id);
+
+    return res
+      .status(200)
+      .json({ message: 'Comment created successfully', commentId: commentId });
+  } catch (error) {
+    handleError(res, error);
+  }
+};
+
+export const deleteComment = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const deletedComment = await deleteCommentById(id);
+
+    if (!deletedComment) {
+      return res.status(404).json({ message: 'Comment not found' });
+    }
+
+    return res.status(200).json({ message: 'Comment deleted successfully' });
+  } catch (error) {
+    handleError(res, error);
+  }
+};
+```
+### dataController.js
+```js
+import handleError from '../utils/handleError.js';
+import {
+  selectData,
+  selectDataById,
+  insertData,
+  updateDataById,
+  deleteDataById,
+} from '../models/DataModel.js';
+
+export const getAllData = async (req, res) => {
+  try {
+    const data = await selectData();
+    return res.status(200).json(data);
+  } catch (error) {
+    handleError(res, error);
+  }
+};
+
+export const getData = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const data = await selectDataById(id);
+
+    if (!data) {
+      return res.status(404).json({ message: 'Data not found' });
+    }
+
+    return res.status(200).json(data);
+  } catch (error) {
+    handleError(res, error);
+  }
+};
+
+export const createData = async (req, res) => {
+  try {
+    const { name, content, Category_id } = req.body;
+
+    if (!name || !content || !Category_id) {
+      return res.status(400).json({ message: 'Required data missing' });
+    }
+
+    const dataId = await insertData(name, content, Category_id);
+
+    return res
+      .status(200)
+      .json({ message: 'Data created successfully', dataId: dataId });
+  } catch (error) {
+    handleError(res, error);
+  }
+};
+
+export const updateData = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, content, Category_id } = req.body;
+
+    if (!name && !content && !Category_id) {
+      return res.status(400).json({ message: 'No fields to update' });
+    }
+
+    const updatedData = await updateDataById(id, name, content, Category_id);
+
+    if (!updatedData) {
+      return res.status(404).json({ message: 'Data not found' });
+    }
+
+    return res
+      .status(200)
+      .json({ message: 'Data updated successfully', updatedData: updatedData });
+  } catch (error) {
+    handleError(res, error);
+  }
+};
+
+export const deleteData = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const deletedData = await deleteDataById(id);
+
+    if (!deletedData) {
+      return res.status(404).json({ message: 'Data not found' });
+    }
+
+    return res.status(200).json({ message: 'Data deleted successfully' });
+  } catch (error) {
+    handleError(res, error);
+  }
+};
+```
+___
+## Моделі для роботи з базою даних
+### commentModel.js
+```js
+import db from '../utils/db.js';
+
+export const selectComments = async () => {
+  const [rows] = await db.query('SELECT * FROM Comment');
+  return rows;
+};
+
+export const selectCommentById = async (id) => {
+  const [rows] = await db.query('SELECT * FROM Comment WHERE id = ?', [id]);
+  return rows[0];
+};
+
+export const insertComment = async (content, User_id, Data_id) => {
+  const [result] = await db.query(
+          'INSERT INTO Comment (content, User_id, Data_id) VALUES (?, ?, ?)',
+          [content, User_id, Data_id],
+  );
+  return result.insertId;
+};
+
+export const deleteCommentById = async (id) => {
+  const [result] = await db.query('DELETE FROM Comment WHERE id = ?', [id]);
+  return result.affectedRows > 0;
+};
+```
+### dataModel.js
+```js
+import db from '../utils/db.js';
+
+export const selectData = async () => {
+  const [rows] = await db.query('SELECT * FROM Data');
+  return rows;
+};
+
+export const selectDataById = async (id) => {
+  const [rows] = await db.query('SELECT * FROM Data WHERE id = ?', [id]);
+  return rows[0];
+};
+
+export const insertData = async (name, content, Category_id) => {
+  const [result] = await db.query(
+    'INSERT INTO Data (name, content, Category_id) VALUES (?, ?, ?)',
+    [name, content, Category_id],
+  );
+  return result.insertId;
+};
+
+export const updateDataById = async (id, name, content, Category_id) => {
+  const fields = [];
+  const values = [];
+
+  if (name) {
+    fields.push('name = ?');
+    values.push(name);
+  }
+  if (content) {
+    fields.push('content = ?');
+    values.push(content);
+  }
+  if (Category_id) {
+    fields.push('Category_id = ?');
+    values.push(Category_id);
+  }
+
+  values.push(id);
+
+  const query = `UPDATE Data SET ${fields.join(', ')} WHERE id = ?`;
+
+  await db.query(query, values);
+
+  const updatedData = await selectDataById(id);
+
+  return updatedData;
+};
+
+export const deleteDataById = async (id) => {
+  const [result] = await db.query('DELETE FROM Data WHERE id = ?', [id]);
+  return result.affectedRows > 0;
+};
+```
+___
+## Підключення до бази даних (db.js)
+```js
+import dotenv from 'dotenv';
+import mysql from 'mysql2/promise';
+
+dotenv.config();
+
+const dbConfig = {
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT,
+};
+
+const db = mysql.createPool(dbConfig);
+
+export default db;
+```
+___
+## Обробник помилок (handleError.js)
+```js
+const handleError = (
+  res,
+  error,
+  statusCode = 500,
+  message = 'Internal server error',
+) => {
+  console.error(error);
+  res.status(statusCode).json({ message });
+};
+
+export default handleError;
+
+```
